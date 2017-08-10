@@ -1,0 +1,215 @@
+// 
+//  FindTarget.cpp
+//  HeroDetect
+//
+//  Created by ding on 17/5/22.
+//  Copyright (c) 2017年 ding. All rights reserved.
+//
+
+#include "FindTarget.h"
+
+RMHeroDetect::RMHeroDetect(int th1,int th2):thres1(th1),thres2(th2){
+    kalmanerr      = 7.0;
+    kalmanbias     = Point(20,20);
+    OldCenter      = Point(0,0);
+    NewCenter      = Point(0,0);
+    Center_Procout = Point(0,0);
+}
+
+RMHeroDetect::~RMHeroDetect(){
+    
+}
+
+void RMHeroDetect::VariableReset(){
+    kalmanerr      = 7.0;
+    kalmanbias     = Point(20,20);
+    OldCenter      = Point(0,0);
+    NewCenter      = Point(0,0);
+    Center_Procout = Point(0,0);
+}
+
+void RMHeroDetect::ThresProcess(){
+    split(img, splited);
+    /*imgb = splited[0];
+    imgg = splited[1];
+    imgr = splited[2];*/
+    Mat diff1 = splited[2] - splited[0];
+    Mat diff2 = splited[1] - splited[0];
+    
+    
+    
+    int total = diff1.rows * diff2.cols;
+    for(int i=0;i<total;i++){
+        if(diff1.at<uchar>(i) > thres1 && diff2.at<uchar>(i) > thres2){
+            YellowThres.at<uchar>(i) = 255;
+        }else{
+            YellowThres.at<uchar>(i) = 0;
+        }
+    }
+}
+
+void RMHeroDetect::FindRect(){
+    contours.clear();
+    Rectangles.clear();
+    hierarchy.clear();
+    Inner.clear();
+    InitialCenters.clear();
+    Mat copy = YellowThres.clone();
+    //resize(copy, copy, Size(800,600));
+    //resize(img, img, Size(800,600));
+    findContours(copy, contours, hierarchy,CV_RETR_TREE, CV_CHAIN_APPROX_NONE);
+    size_t contoursize = contours.size();
+    Point center;
+    
+        for(int i=0;i<contoursize;i++){
+            //cout<<hierarchy[i]<<endl;
+            if(hierarchy[i][2] != -1 && hierarchy[i][3] == -1){
+                Rectangles.push_back(contours[i]);
+                approxPolyDP(contours[i+1], approx, 5, true);
+                
+                center_g(contours[i+1], center);
+                center.y = center.y - 40;
+                center.x = center.x - 40;
+                //string text;
+                if(approx.size() == 3){
+                    //text = "Triangle";
+                    TriangleDirection(approx);
+                }/*else if(approx.size() == 4){
+                    text = "Rectangle";
+                }else if(approx.size() == 5){
+                    text = "pentagon";
+                }else if(approx.size() == 6){
+                    text = "hexagon";
+                }else{
+                    text = "???";
+                }*/
+                //putText(img, text, center, CV_FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(0,255,128));
+                //cout<<"size:"<<approx.size()<<endl;
+                Inner.push_back(contours[i+1]);
+            }
+        }
+    OldCenter = Center_Procout;
+    Merge();
+    Classical_kalman(kalmanbias, kalmanerr, OldCenter, Center_Procout, NewCenter);
+    
+    //cout<<"pass"<<endl;
+}
+
+void RMHeroDetect::Process(const Mat input){
+    img = input;
+    YellowThres.create(img.rows, img.cols, CV_8UC1);
+    ThresProcess();
+    FindRect();
+}
+
+void RMHeroDetect::dataout(Mat &Thresimg,Mat &init,Point &center){
+    Thresimg = YellowThres;
+    init = img;
+    center = Center_Procout;
+    //drawContours(init, Rectangles, -1, Scalar(255,0,255 ),3);
+    drawContours(init, Inner, -1, Scalar(0,0,255),3);
+    
+}
+
+
+void RMHeroDetect::center_g(const vector<Point> contour,Point &center){
+    Moments mu;
+    mu = moments(contour,false);
+    center.x=mu.m10/mu.m00;
+    center.y=mu.m01/mu.m00;
+}
+
+float RMHeroDetect::Point_eudis(Point P1,Point P2){
+    return sqrtf((P1.x - P2.x) * (P1.x - P2.x) + (P1.y - P2.y) * (P1.y - P2.y));
+}
+
+void RMHeroDetect::TriangleDirection(vector<Point> Triangle){
+    int a,b,c;
+    a = Point_eudis(Triangle[0],Triangle[1]);
+    b = Point_eudis(Triangle[1],Triangle[2]);
+    c = Point_eudis(Triangle[2],Triangle[0]);
+    float Angle_0 = acos((a*a+c*c-b*b)/(2.0*a*c))*180.0/CV_PI;
+    float Angle_1 = acos((a*a+b*b-c*c)/(2.0*a*b))*180.0/CV_PI;
+    float Angle_2 = acos((b*b+c*c-a*a)/(2.0*b*c))*180.0/CV_PI;
+    
+    float MAXVAL = MAX(MAX(Angle_0,Angle_1),Angle_2);
+    
+    Point Right,OtherOne,OtherTwo;
+    
+    //if(fabs(MAXVAL - 90.0) > 20.0) return;
+    
+    if(MAXVAL == Angle_0){
+        Right    = Triangle[0];
+        OtherOne = Triangle[1];
+        OtherTwo = Triangle[2];
+    }else if(MAXVAL == Angle_1){
+        Right    = Triangle[1];
+        OtherOne = Triangle[0];
+        OtherTwo = Triangle[2];
+    }else{
+        Right    = Triangle[2];
+        OtherOne = Triangle[0];
+        OtherTwo = Triangle[1];
+    }
+    
+    
+    Point magic;
+    magic.x = ( OtherOne.x + OtherTwo.x ) / 2.0;
+    magic.y = ( OtherOne.y + OtherTwo.y ) / 2.0;
+    Point scale = Point((Right.x - magic.x) , (Right.y - magic.y));
+    Point answer;
+    answer.x = Right.x + scale.x * 10.0; // value wait to change
+    answer.y = Right.y + scale.y * 10.0;
+    InitialCenters.push_back(answer);
+    //circle(img, answer, 10,Scalar(255,0,0),-1);
+}
+
+void RMHeroDetect::Merge(){
+    size_t center_numbers = InitialCenters.size();
+    if(center_numbers == 0) {
+        NewCenter = Point(0,0);
+        return;
+    }
+    if(center_numbers == 1){
+        NewCenter = InitialCenters[0];
+        return;
+    }
+    
+    NewCenter = InitialCenters[0];
+    for(size_t i=1;i<center_numbers;i++){
+        NewCenter.x = (NewCenter.x + InitialCenters[i].x) / 2;
+        NewCenter.y = (NewCenter.y + InitialCenters[i].y) / 2;
+    }
+    //circle(img, NewCenter, 10, Scalar(255,0,255),-1);
+}
+
+void RMHeroDetect::Classical_kalman(Point &bias,float err,Point &P_old,Point &P_new,Point P){
+    Point2f newbias,K,Kg;
+    P_old.x   = P_new.x;
+    P_old.y   = P_new.y;
+    newbias.x = P_old.x - P.x;
+    newbias.y = P_old.y - P.y;
+    K.x       = fabs(2.0*newbias.x);
+    K.y       = fabs(2.0*newbias.y);
+    Kg.x      = sqrt((bias.x*bias.x+err*err)/((bias.x*bias.x+err*err)+K.x*K.x));
+    Kg.y      = sqrt((bias.y*bias.y+err*err)/((bias.y*bias.y+err*err)+K.y*K.y));
+    bias.x    = sqrt((1-Kg.x)*(bias.x*bias.x+err*err));
+    bias.y    = sqrt((1-Kg.y)*(bias.y*bias.y+err*err));
+    P_new.x   = P.x+Kg.x*(newbias.x);
+    P_new.y   = P.y+Kg.y*(newbias.y);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,9 @@
+<launch>
+	
+	<node pkg="opencv_image" type="my_publisher" name="camera_capture" output="screen" respawn = "true">
+	</node>
+	<node pkg="sudoku" type="sudoku" name="sudoku_mission" output="screen" respawn = "true">
+	</node>
+	
+
+</launch>

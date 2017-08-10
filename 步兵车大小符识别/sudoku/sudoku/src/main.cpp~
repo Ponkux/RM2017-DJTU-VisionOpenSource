@@ -1,0 +1,183 @@
+//
+//  main.cpp
+//  sudoku
+//
+//  Created by ding on 17/6/5.
+//  Copyright (c) 2017年 ding. All rights reserved.
+//
+
+#define MODE_OLD 2
+#define MODE_NEW 1
+
+#include <ros/ros.h>
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <iostream>
+#include "Capture.h"
+#include "InitParam.h"
+
+#include "sudoku_new/ImageProcess.h"
+#include "sudoku_new/HandWritingSolver.h"
+#include "sudoku_new/LedNumberSolver.h"
+#include "sudoku_new/LogicProcess.h"
+
+#include "sudoku_old/ImageProcess.h"
+#include "TString.h"
+#include "sudoku/sudoku_position.h"
+#include "uart_node/sudoku_mode.h"
+
+Mat img;
+Confirm confirm;
+InitParams params;
+int serialfd = 0;
+double time0 = 0;
+std::pair<int,int> FinalResult;
+
+string model_file   = "/home/ubuntu/catkin_ws/src/sudoku/caffemodels/lenet.prototxt";
+string trained_file = "/home/ubuntu/catkin_ws/src/sudoku/caffemodels/mynet_iter_10000.caffemodel";
+string mean_file    = "/home/ubuntu/catkin_ws/src/sudoku/caffemodels/mean.binaryproto";
+string label_file   = "/home/ubuntu/catkin_ws/src/sudoku/caffemodels/synset_words.txt";
+string low_trained = "/home/ubuntu/catkin_ws/src/sudoku/lowrate/mynet_iter_1000.caffemodel";
+sudoku::NumberPredict HandWritingSolver(model_file,trained_file,mean_file,label_file,low_trained);
+
+sudoku::ImageProcess sudokusolve; // for upper contours : for whole classifier  -- new
+sudoku::LedNumberSolver ledsolver("/home/ubuntu/catkin_ws/src/sudoku/svm/SVM_DATA_NUM.xml",params);
+sudoku::LogicProcess logic; 
+
+
+sudokuold::ImageProcess sudoku_old_solve;
+sudokuold::Params Parameters_old;
+
+
+//int sudoku_mode = MODE_NEW;
+int sudoku_mode=0;// = MODE_OLD;
+void deal_mode(const uart_node::sudoku_mode::ConstPtr& msg){
+	if(params.debug_mode == 0){
+		sudoku_mode = msg->mode;
+	}else{
+		sudoku_mode = params.debug_mode;
+	}
+}
+ 
+void imageCallback(const sensor_msgs::ImageConstPtr& msg)
+{
+		if(sudoku_mode == MODE_NEW){
+			img = cv_bridge::toCvShare(msg, "bgr8")->image;
+			//time0 = static_cast<double>(getTickCount());
+		    sudokusolve.process(img);
+		    HandWritingSolver.process(sudokusolve.SudokuArea,sudokusolve.thresdown,img,confirm);
+		    ledsolver.process(sudokusolve.LedArea,sudokusolve.brighted, img,confirm);
+		    FinalResult = logic.process(confirm, ledsolver.result, HandWritingSolver.result);
+		    logic.DrawTarget(img, sudokusolve.SudokuArea);
+		    if(params.debug_flag){
+		        //cout<<"result:"<<FinalResult.first<<","<<FinalResult.second<<endl;
+		    }
+		    //time0 = ((double)getTickCount() - time0) / getTickFrequency();
+		    
+		    imshow("init", img);
+		    if(params.debug_flag){
+				//cout<<time0<<"s"<<endl;
+		        sudokusolve.ParamsFresh(params);
+		        ledsolver.ParamsFresh(params);
+		        imshow("Binary",sudokusolve.thresdown);
+		        if(sudokusolve.RoiBinary.rows != 0){
+		        imshow("LED",sudokusolve.RoiBinary);
+		        }
+		    }
+			return;
+		}
+		if(sudoku_mode == MODE_OLD){
+			img = cv_bridge::toCvShare(msg, "bgr8")->image;
+			//time0 = static_cast<double>(getTickCount());
+			sudoku_old_solve.Process(img);
+			//time0 = ((double)getTickCount() - time0) / getTickFrequency();
+			imshow("init",sudoku_old_solve.init);
+			if(params.debug_flag){
+				sudoku_old_solve.ParamFresh(Parameters_old);
+				//cout<<time0<<"s"<<endl;
+				imshow("Binary", sudoku_old_solve.Binary);
+			}
+			return;
+		}
+}
+
+int main(int argc, char * argv[]) {
+    ros::init(argc, argv, "sudoku");
+    ros::NodeHandle nh;
+	image_transport::ImageTransport it(nh);
+    image_transport::Subscriber sub = it.subscribe("camera/image", 1, imageCallback);
+
+	ros::Publisher pub_pos = nh.advertise<sudoku::sudoku_position>("sudoku_position",1);
+	ros::Subscriber sub_mode = nh.subscribe("sudoku_mode",1,deal_mode);
+
+
+    // caffe files
+    //::google::InitGoogleLogging("/home/ubuntu/catkin_ws/src/sudoku/classification.bin");
+    
+    
+    // Params init
+    
+    FileStorage Params("/home/ubuntu/catkin_ws/src/sudoku/Params.xml", FileStorage::READ);
+    InitParam(params,Params);
+	InitOldParam(Parameters_old,Params);
+    Params.release();
+    // Process init
+    sudokusolve.ParamsFresh(params);
+    // Prototype init
+    ledsolver.ParamsFresh(params);
+	sudoku_old_solve.ParamFresh(Parameters_old);
+    
+    memset(&confirm, 0, sizeof(confirm)); // Initialize
+    
+	namedWindow("init");
+    if(params.debug_flag){
+        string windowname = "Adjust value new sudoku";
+        namedWindow(windowname,CV_WINDOW_AUTOSIZE);
+        createTrackbar("thres1", windowname, &params.thresholdup, 255);
+        createTrackbar("thres2", windowname, &params.thresholddown, 255);
+        createTrackbar("thres3", windowname, &params.thresholdfindup, 255);
+        createTrackbar("small_min", windowname, &params.small_area_min, 2000);
+        createTrackbar("small_max", windowname, &params.small_area_max, 4000);
+        createTrackbar("big_min", windowname, &params.big_area_min, 5000);
+        createTrackbar("big_max", windowname, &params.big_area_max, 10000);
+		string windowold = "Adjust value old sudoku";
+		namedWindow(windowold,CV_WINDOW_AUTOSIZE);
+		createTrackbar("BinaryThreshold", windowold, &Parameters_old.thres_val, 255);
+    	createTrackbar("min", windowold, &Parameters_old.contour_min, 20000);
+   	 	createTrackbar("max",windowold, &Parameters_old.contour_max, 20000);
+		TString thresnm,lednm;
+		thresnm<<"region ";
+		for(int i=0;i<9;i++){
+			++thresnm;
+    		createTrackbar(thresnm.str, windowold, &Parameters_old.thres_detector[i], 255);
+		}
+		lednm<<"led";
+		for(int i=0;i<5;i++){
+			++lednm;
+			namedWindow(lednm.str);
+		}
+        namedWindow("Binary");
+        namedWindow("LED");
+		TString winstr;
+		for(int i=0;i<9;i++){
+			++winstr;
+			namedWindow(winstr.str);
+		}
+    }
+	startWindowThread();
+    while (ros::ok()) {
+		sudoku::sudoku_position pos;
+		if(sudoku_mode == MODE_NEW){
+			pos.which = FinalResult.first;
+			pos.pos   = FinalResult.second;
+			pub_pos.publish(pos);
+		}
+		if(sudoku_mode == MODE_OLD){
+			pos.which = 0;
+			pos.pos = sudoku_old_solve.result;
+			pub_pos.publish(pos);
+		}
+		ros::spinOnce();
+    }
+    return 0;
+}

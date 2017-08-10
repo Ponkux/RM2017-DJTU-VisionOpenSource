@@ -1,0 +1,163 @@
+//
+//  HandWritingSolver.cpp
+//  sudoku
+//
+//  Created by ding on 17/6/6.
+//  Copyright (c) 2017年 ding. All rights reserved.
+//
+
+#include "sudoku_new/HandWritingSolver.h"
+namespace sudoku{
+    
+
+NumberPredict::NumberPredict
+            (const string& model_file,
+             const string& trained_file,
+             const string& mean_file,
+             const string& label_file,
+             const string& low_trained_file)
+{
+    classifier.Initialize(model_file, trained_file, mean_file, label_file);
+    lowrate.Initialize(model_file, low_trained_file, mean_file, label_file);
+    kernel = getStructuringElement(MORPH_RECT, Size(3,3));
+}
+
+void NumberPredict::process(vector<Rect> input,Mat Binaryimg,Mat &img,Confirm &confirm){
+    size_t size = input.size();
+    oldresult = result;
+    if(size != 9) {
+        return;
+    }
+    Judgedata.clear();
+    Position.clear();
+    sudoku_repeat.clear();
+    int value;
+    Point OutValue;
+	result.clear();
+    confirm.HandWriting = true;
+    std::pair<int,int> indexjudge;
+    for(int i=0;i<9;i++){
+        OutValue.x = input[i].tl().x+10;
+        OutValue.y = input[i].tl().y+15;
+        Position.push_back(OutValue); //
+        roi = Binaryimg(input[i]); // ith roi
+        resize(roi,roi,Size(28,28));
+        std::vector<Prediction> predictions = classifier.Classify(roi);
+        Prediction p = predictions[0]; 
+        value = atoi(p.first.c_str());
+        OutValue.y += 20;
+        //putText(img, p.first, OutValue, CV_FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(255,0,255));
+        
+        indexjudge.first = 0;
+        if(value == 0){
+            p = predictions[1];
+            indexjudge.first = 1;
+            value = atoi(p.first.c_str());
+            //cout<<i<<"th value is 0:"<<endl;
+        }
+        indexjudge.second = value;
+        Judgedata.push_back(indexjudge); //
+        //show roi for hand writing digits
+        /*stringstream wname;
+        wname<<i+1;
+        string nm = wname.str();
+        imshow(nm, roi);
+        */
+        //cout<<"value:"<<value<<" confidence:"<<confidence<<endl;
+        result.push_back(value);
+       
+    }
+    int count=0;
+    vector<int> val,repeatval;
+    val.push_back(result[0]);
+    int j; 
+    for(int i=1;i<9;i++){
+        for(j=0;j<val.size();j++){
+            if(result[i] == val[j]){
+                count++;
+                repeatval.push_back(result[i]); //repeat
+                break;
+            }
+        }
+        if(j == val.size()){
+            val.push_back(result[i]);//no repeat
+        }
+        if(count>4){
+            putText(img, "valid", Point(250,50), CV_FONT_HERSHEY_COMPLEX, 1, Scalar(255,255,255));
+            result = oldresult;
+            break;
+        }
+        
+    }
+    // can be annotation. Judge wrong number by using low rate model
+    size_t repeatsize = repeatval.size();
+    if(repeatsize==1){ // have 1 same number
+        sort(val.begin(),val.end());
+        size_t vals = val.size()-1;
+        int lost = 0;
+        
+        if(val[0] != 1){
+            lost = 1;
+        }else if(val[vals] != 9){
+            lost = 9;
+        }else{
+            for(int i=0;i<vals;i++){ // find which digit lost
+                if(val[i+1]-val[i] != 1){
+                    lost = val[i]+1;
+                    break;
+                }
+            }
+        }
+        //cout<<"which:"<<repeatval[0]<<endl;
+        for(int j=0;j<9;j++){
+            if(Judgedata[j].second == repeatval[0]){
+                if(Judgedata[j].first == 1){
+                    result[j] = lost;
+                    //cout<<"correct:"<<repeat<<endl;
+                    break;
+                }else{
+                    std::vector<Prediction> predictions_low = lowrate.Classify(Binaryimg(input[j]));
+                    Prediction p_low = predictions_low[0];
+                    int predict_low = atoi(p_low.first.c_str());
+                    
+                    if(predict_low == lost){
+                        result[j] = lost;
+                        break;
+                    }
+                    stringstream repeatdig;
+                    repeatdig<<result[j];
+                    putText(img, repeatdig.str(), Point(Position[j].x+60,Position[j].y), CV_FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(100,100,100));
+                    /*result[j] = atoi(p_low.first.c_str());
+                    stringstream repeatdig;
+                    repeatdig<<result[j];
+                    putText(img, repeatdig.str(), Point(Position[j].x+60,Position[j].y), CV_FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(100,100,100));*/
+                    /*if(atoi(p_low.first.c_str()) != result[j]){
+                        result[j] = lost;
+                        stringstream repeatdig;
+                        repeatdig<<result[j];
+                        putText(img, repeatdig.str(), Point(Position[j].x+60,Position[j].y), CV_FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(100,100,100));
+                        break;
+                    }*/
+                }
+            }
+        }
+    }
+    
+   
+    // cout digits
+
+        /*cout<<"digits:"<<endl;
+        cout<<result[0]<<" "<<result[1]<<" "<<result[2]<<endl;
+        cout<<result[3]<<" "<<result[4]<<" "<<result[5]<<endl;
+        cout<<result[6]<<" "<<result[7]<<" "<<result[8]<<endl;
+        */
+    for(int i=0;i<9;i++){ // print
+        stringstream dig;
+        dig<<result[i];
+        
+        putText(img, dig.str(), Position[i], CV_FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(0,0,255));
+    }
+
+}
+
+}

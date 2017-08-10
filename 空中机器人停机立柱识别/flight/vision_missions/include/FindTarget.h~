@@ -1,0 +1,50 @@
+//
+//  FindTarget.h
+//  HeroDetect
+//
+//  Created by ding on 17/5/22.
+//  Copyright (c) 2017年 ding. All rights reserved.
+//
+
+#ifndef __HeroDetect__FindTarget__
+#define __HeroDetect__FindTarget__
+
+#include <stdio.h>
+#include "Header.h"
+
+
+
+class RMHeroDetect{
+public:
+    RMHeroDetect(int th1,int th2);
+    ~RMHeroDetect();
+    void VariableReset();
+    void Process(const Mat input);
+    void dataout(Mat &Thresimg,Mat &init,Point &center);
+private:
+    void FindRect();
+    void ThresProcess();
+    void center_g(const vector<Point> contour,Point &center);
+    void TriangleDirection(vector<Point> Triangle);
+    float Point_eudis(Point P1,Point P2);
+    void Classical_kalman(Point &bias,float err,Point &P_old,Point &P_new,Point P);
+    void Merge();
+private:
+    const int thres1,thres2;
+    float kalmanerr;
+    Point kalmanbias,OldCenter,NewCenter;
+    Point Center_Procout;
+    Mat img;
+    Mat YellowThres;
+    Mat imgb,imgg,imgr;
+    vector<Mat> splited;
+    vector<Vec4i> hierarchy;
+    vector<vector<Point> > contours,Rectangles,Inner;
+    vector<Point> approx;
+    vector<Point> InitialCenters;
+    
+};
+
+
+
+#endif /* defined(__HeroDetect__FindTarget__) */

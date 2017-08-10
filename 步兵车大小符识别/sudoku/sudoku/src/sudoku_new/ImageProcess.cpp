@@ -1,0 +1,155 @@
+//
+//  ImageProcess.cpp
+//  sudoku
+//
+//  Created by ding on 17/6/5.
+//  Copyright (c) 2017年 ding. All rights reserved.
+//
+
+#include "sudoku_new/ImageProcess.h"
+
+namespace sudoku{
+
+ImageProcess::ImageProcess(){
+    thres1 = 100;
+    thres2 = 120;
+    alpha = 0.7;
+    beta = -10;
+    small_min = 400;
+    small_max = 1000;
+    big_min   = 3500;
+    big_max   = 6000;
+}
+    
+ImageProcess::ImageProcess(const InitParams &params){
+    thres1    = params.thresholdup;
+    thres2    = params.thresholddown;
+    alpha     = params.alpha;
+    beta      = params.beta;
+    small_min = params.small_area_min;
+    small_max = params.small_area_max;
+    big_min   = params.big_area_min;
+    big_max   = params.big_area_max;
+    debug_flag= params.debug_flag;
+}
+    
+void ImageProcess::ParamsFresh(const InitParams &params){
+    CheckValue("thres1",thres1,params.thresholdup);
+    CheckValue("thres2",thres2,params.thresholddown);
+    CheckValue("alpha",alpha,params.alpha);
+    CheckValue("beta", beta, params.beta);
+    CheckValue("small_min",small_min,params.small_area_min);
+    CheckValue("small_max",small_max,params.small_area_max);
+    CheckValue("big_min",big_min,params.big_area_min);
+    CheckValue("big_max",big_max,params.big_area_max);
+    
+    thres1    = params.thresholdup;
+    thres2    = params.thresholddown;
+    alpha     = params.alpha;
+    beta      = params.beta;
+    small_min = params.small_area_min;
+    small_max = params.small_area_max;
+    big_min   = params.big_area_min;
+    big_max   = params.big_area_max;
+}
+
+
+void ImageProcess::process(Mat input){
+    img = input;
+    imginit = input;
+    imgup = img;
+	imgdown = img;
+    //img.convertTo(imgdown, CV_8UC3,alpha,beta);
+    brighted = img.clone();
+    Process();
+}
+
+void ImageProcess::Process(){
+    ThresholdProcess();
+    ContourProcess();
+}
+
+void ImageProcess::ThresholdProcess(){
+    cvtColor(imgdown, graydown, CV_BGR2GRAY);
+    threshold(graydown, thresdown, thres2, 255, THRESH_BINARY_INV);
+}
+
+void ImageProcess::ContourProcess(){
+    sudokus.clear();
+    SudokuArea.clear();
+    Lednums.clear();
+    LedArea.clear();
+    thresdown.copyTo(contour_nouse);
+    findContours(contour_nouse, contours,CV_RETR_TREE, CV_CHAIN_APPROX_NONE);
+    size_t size = contours.size();
+    vector<Point> approx;
+    Rect bound;
+    for(size_t i=0;i<size;i++){
+        bound = boundingRect(contours[i]);
+        if(bound.area() > big_min && bound.area() < big_max && (float)bound.width/bound.height>1.0 && (float)bound.width/bound.height<2.0){ // 2500 6000
+            SortSudokus su(bound);
+            sudokus.push_back(su);
+        }
+    }
+    std::sort(sudokus.begin(),sudokus.end());
+    if(sudokus.size() == 9){
+        for(int i=0;i<9;i++){
+            bound = Rect_<int>(sudokus[i].x, sudokus[i].y, sudokus[i].width, sudokus[i].height);
+            SudokuArea.push_back(bound);
+            rectangle(img, bound, Scalar(255,0,255),2);//draw contour
+            //cout<<bound.tl()<<endl;
+        }
+        int top=SudokuArea[0].tl().y;
+        int topx = SudokuArea[0].tl().x;
+        int twidth = SudokuArea[2].br().x - topx;
+        for(int i=1;i<3;i++){
+            if(SudokuArea[i].tl().y > top){
+                top = SudokuArea[i].tl().y;
+            }
+        }
+        LedRoi = Mat(imginit, Rect_<int>(topx, 0, twidth, top)); // here
+        cvtColor(LedRoi, RoiBinary, CV_BGR2GRAY);
+        threshold(RoiBinary, RoiBinary, thres1, 255, THRESH_BINARY);
+        RoiBinary.copyTo(RoiBinary_nouse);
+        findContours(RoiBinary_nouse, smallcontours,CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE);
+        size = smallcontours.size();
+        for(size_t i=0;i<size;i++){
+            bound = boundingRect(smallcontours[i]);
+            bound.x += topx;
+			float sizerate = (float)bound.height/bound.width;
+            if(bound.area() > small_min && bound.area() < small_max && sizerate>1.0 && sizerate<2.0){ // 400 1000
+				/*bound.x -=3;
+				bound.y -=3;
+				bound.width += 6;
+				bound.height += 6;*/
+                SortRects Forsort(bound);
+                Lednums.push_back(Forsort);
+				//cout<<"led rate:"<<(float)bound.height/bound.width<<endl;
+            }
+        }
+    }else{
+		sudokus.clear();
+		SudokuArea.clear(); 
+		Lednums.clear(); 
+		LedArea.clear();
+        return;
+    }
+    if(Lednums.size() == 5){
+        std::sort(Lednums.begin(),Lednums.end());
+        size = Lednums.size();
+        for(int i=0;i<size;i++){
+            bound = Rect_<int>(Lednums[i].x, Lednums[i].y, Lednums[i].width, Lednums[i].height);
+            rectangle(img, bound, Scalar(255,0,255)); // draw contour
+            LedArea.push_back(bound);
+        }
+    }else{
+		sudokus.clear();
+		SudokuArea.clear();
+        Lednums.clear();
+        LedArea.clear();
+    }
+	
+}
+    
+}
+

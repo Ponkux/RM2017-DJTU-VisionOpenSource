@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<thres1>71</thres1>
+<thres2>172</thres2>
+<thres3>177</thres3>
+<alpha>0.7</alpha>
+<beta>-10.</beta>
+<small_min>608</small_min>
+<small_max>1360</small_max>
+<big_min>3500</big_min>
+<big_max>6000</big_max>
+<debug_flag>1</debug_flag>
+<debug_mode>1</debug_mode>
+<old_thres_val>172</old_thres_val>
+<old_thres_detector_1>189</old_thres_detector_1>
+<old_thres_detector_2>189</old_thres_detector_2>
+<old_thres_detector_3>189</old_thres_detector_3>
+<old_thres_detector_4>189</old_thres_detector_4>
+<old_thres_detector_5>189</old_thres_detector_5>
+<old_thres_detector_6>189</old_thres_detector_6>
+<old_thres_detector_7>189</old_thres_detector_7>
+<old_thres_detector_8>189</old_thres_detector_8>
+<old_thres_detector_9>189</old_thres_detector_9>
+<old_contour_min>3500</old_contour_min>
+<old_contour_max>6000</old_contour_max>
+<old_targetsize>172</old_targetsize>
+</opencv_storage>
+<!--This is the parameter setting file for sudoku mission
+ @DJTU TOE
+ @version 20170610
+ Parameters :
+ thres1: Use for finding contours of small upper digits
+ thres2: Use for finding contours of big handwrite digits
+ thres3: Use for svm which gives the prediction of LED digits
+ alpha : Initial image brightness
+ beta  : Initial image contrast
+ small_min : Threshold minimum for rectangle area of small digits
+ small_max : ~maximum
+ big_min   : ~big digits
+ big_max   : ~
+ debug_flag: Set 1 to show binary images,led digit targets
+ -->

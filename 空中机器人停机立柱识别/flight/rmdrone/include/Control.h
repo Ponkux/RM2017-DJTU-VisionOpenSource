@@ -1,0 +1,6 @@
+#ifndef _CONTROL_H_
+#define _CONTROL_H_
+
+void permission_set(DJIDrone *drone,int &control_set_flag);
+
+#endif

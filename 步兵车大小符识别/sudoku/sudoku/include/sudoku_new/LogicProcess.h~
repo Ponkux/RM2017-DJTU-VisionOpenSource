@@ -1,0 +1,47 @@
+//
+//  LogicProcess.h
+//  sudoku
+//
+//  Created by ding on 17/6/7.
+//  Copyright (c) 2017年 ding. All rights reserved.
+//
+
+#ifndef __sudoku__LogicProcess__
+#define __sudoku__LogicProcess__
+
+#include "Header.h"
+
+typedef struct{
+    bool Led;
+    bool HandWriting;
+    int Shoot;
+    int Change;
+}Confirm;
+
+namespace sudoku{
+
+class LogicProcess{
+public:
+    LogicProcess(){
+        LedNums.clear();
+        HandWritingNums.clear();
+        startflag = 0;
+        flag = 0;
+    };
+    ~LogicProcess(){};
+    std::pair<int,int> process(Confirm &confirm,vector<int> Ledsorted,vector<int> HandWritingsorted);
+    void DrawTarget(cv::Mat &input,vector<cv::Rect> targets);
+    
+private:
+    vector<int> LedNums,HandWritingNums;
+    std::pair<int,int> result;
+    int flag;
+    int startflag;
+	int led_changedflag;
+		int lostflag;
+};
+    
+}
+
+
+#endif /* defined(__sudoku__LogicProcess__) */
